@@ -1,0 +1,221 @@
+---
+title: "harmony_testing"
+output: html_document
+date: "2024-08-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(Seurat)
+library(harmony)
+
+```
+
+```{r}
+
+seu_ctrl100 <- readRDS("CTRL100_doubletfiltered.rds")
+seu_ctrl38 <- readRDS("CTRL38_doubletfiltered.rds")
+seu_ctrl40 <- readRDS("CTRL40_doubletfiltered.rds")
+seu_ctrl77 <- readRDS("CTRL77_doubletfiltered.rds")
+seu_ctrl82 <- readRDS("CTRL82_doubletfiltered.rds")
+seu_ctrl83 <- readRDS("CTRL83_doubletfiltered.rds")
+seu_ctrl86 <- readRDS("CTRL86_doubletfiltered.rds")
+seu_ctrl87 <- readRDS("CTRL87_doubletfiltered.rds")
+
+```
+
+```{r}
+
+seurat_obj <- merge(seu_ctrl100, y = c(seu_ctrl38, seu_ctrl40, seu_ctrl77, seu_ctrl82, seu_ctrl83, seu_ctrl86, seu_ctrl87), add.cell.ids = c("CTRL100", "CTRL38", "CTRL40", "CTRL77", "CTRL82", "CTRL83", "CTRL86", "CTRL87"))
+
+```
+
+
+```{r}
+table(seurat_obj$orig.ident)
+```
+
+```{r}
+
+seurat_obj <- NormalizeData(seurat_obj)
+seurat_obj <- FindVariableFeatures(seurat_obj, selection.method = "vst", nfeatures = 2000)
+seurat_obj <- ScaleData(seurat_obj)
+
+```
+
+```{r}
+
+seurat_obj <- RunPCA(seurat_obj, npcs = 30, verbose = FALSE)
+
+```
+
+```{r}
+
+seurat_obj <- RunHarmony(seurat_obj, group.by.vars = "orig.ident", reduction.use = "pca", dims = 1:30)
+
+```
+
+
+```{r}
+
+# Run UMAP using the Harmony-corrected embeddings
+seurat_obj <- RunUMAP(seurat_obj, reduction = "harmony", dims = 1:30)
+
+# Perform clustering on the Harmony-corrected data
+seurat_obj <- FindNeighbors(seurat_obj, reduction = "harmony", dims = 1:30)
+seurat_obj <- FindClusters(seurat_obj, resolution = 0.5)
+
+# Visualize the UMAP plot
+DimPlot(seurat_obj, reduction = "umap", group.by = "orig.ident")
+DimPlot(seurat_obj, reduction = "umap", group.by = "seurat_clusters")
+
+```
+
+```{r}
+
+# Set identity to orig.ident
+Idents(seurat_obj) <- "orig.ident"
+
+# Specify the group you want to highlight (the rest will be greyed out)
+group_to_highlight <- "seu_test"  # Replace with your specific orig.ident value
+
+# Use DimPlot with cells.highlight to grey out other groups
+umap_plot <- DimPlot(
+  seurat_obj,
+  pt.size = 3,
+  reduction = "umap", 
+  cells.highlight = WhichCells(seurat_obj, idents = group_to_highlight), 
+  cols.highlight = "blue",  # Highlight color
+  cols = "grey"  # Color for all other cells
+) + NoLegend()
+
+# Display the plot
+print(umap_plot)
+
+```
+
+```{r}
+
+library(dplyr)
+```
+
+
+```{r}
+
+harmony_combined <- readRDS("harmony_combined.rds")
+
+```
+
+```{r}
+
+cluster_labels <- BCH_cluster_labels
+
+cluster_labels <- cluster_labels %>%
+  dplyr::rename(seurat_clusters = cluster)
+
+cluster_labels$seurat_clusters <- as.factor(cluster_labels$seurat_clusters)
+
+test <- harmony_combined@meta.data %>% left_join(cluster_labels, by = "seurat_clusters")
+
+
+harmony_combined@meta.data$cell_type <- test$label
+
+
+```
+
+
+
+```{r}
+
+# Run UMAP using the Harmony-corrected embeddings
+#seurat_obj <- RunUMAP(seurat_obj, reduction = "harmony", dims = 1:30)
+
+# Perform clustering on the Harmony-corrected data
+#seurat_obj <- FindNeighbors(seurat_obj, reduction = "harmony", dims = 1:30)
+#seurat_obj <- FindClusters(seurat_obj, resolution = 0.5)
+
+#harmony_combined <- FindClusters(harmony_combined, resolution = 0.2)
+
+# Visualize the UMAP plot
+DimPlot(harmony_combined, reduction = "umap", group.by = "orig.ident")
+DimPlot(harmony_combined, reduction = "umap", group.by = "cell_type")
+
+
+
+#saveRDS(harmony_combined, "harmony_11_clusters.rds")
+```
+
+```{r}
+umap_data <- as.data.frame(Embeddings(harmony_combined, "umap"))
+umap_data$cell_type <- harmony_combined@meta.data$cell_type
+
+# Aggregate to find the median UMAP coordinates for each cell type
+label_positions <- aggregate(. ~ cell_type, data = umap_data, FUN = median)
+
+# Create the UMAP plot with points colored by cell type
+umap_plot <- ggplot(umap_data, aes(x = umap_1, y = umap_2, color = cell_type)) +
+  geom_point(size = 0.5) +  # Adjust point size as needed
+  theme_minimal() +
+  scale_color_manual(values = rainbow(length(unique(umap_data$cell_type)))) +
+  ggtitle("UMAP with Annotated Cell Types")
+
+# Add cell type labels using geom_text_repel with black text and connecting lines
+umap_plot <- umap_plot + 
+  geom_text_repel(data = label_positions, 
+                  aes(label = cell_type),
+                  color = "black", # Label text color
+                  size = 3,        # Adjust text size
+                  box.padding = 0.5, 
+                  point.padding = 0.5, 
+                  segment.color = "black", # Line color
+                  segment.size = 0.5, 
+                  segment.length = 5,# Line thickness
+                  max.overlaps = Inf) +
+  theme(legend.position = "none")  # Remove the legend for clarity
+
+# Show the plot
+print(umap_plot)
+```
+
+
+```{r}
+
+
+# Set identity to orig.ident
+Idents(harmony_combined) <- "orig.ident"
+
+# Specify the group you want to highlight (the rest will be greyed out)
+group_to_highlight <- "seu_ctrl87"  # Replace with your specific orig.ident value
+
+# Use DimPlot with cells.highlight to grey out other groups
+umap_plot <- DimPlot(
+  harmony_combined,
+  pt.size = 3,
+  reduction = "umap", 
+  cells.highlight = WhichCells(harmony_combined, idents = group_to_highlight), 
+  cols.highlight = "blue",  # Highlight color
+  cols = "grey"  # Color for all other cells
+) + NoLegend() + ggtitle("UMAP CTRL87")
+
+# Display the plot
+print(umap_plot)
+
+```
+
+
+```{r}
+
+Idents(harmony_combined) <- "seurat_clusters"
+
+
+# Find markers for all clusters
+all_markers <- FindAllMarkers(seu, only.pos = TRUE)
+
+# View the top markers for each cluster
+head(all_markers)
+
+```
+

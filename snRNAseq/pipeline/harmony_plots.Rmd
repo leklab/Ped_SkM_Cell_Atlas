@@ -1,0 +1,111 @@
+---
+title: "harmony_by_age"
+output: html_document
+date: "2024-08-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(Seurat)
+library(dplyr)
+
+```
+
+
+```{r}
+
+harmony_combined <- readRDS("harmony_doublets.rds")
+
+```
+
+```{r}
+
+BCH_metadata <- read.table("BCH_metadata.tsv", header = T)
+
+BCH_metadata <- BCH_metadata %>%
+  dplyr::rename(orig.ident = sample_ids)
+
+```
+
+```{r}
+
+BCH_metadata
+identical(levels(harmony_combined$orig.ident), unique(BCH_metadata$orig.ident))
+
+```
+
+
+```{r}
+
+harmony_combined@meta.data
+test <- harmony_combined@meta.data %>% left_join(BCH_metadata, by = "orig.ident")
+
+
+harmony_combined@meta.data$age <- test$age
+harmony_combined@meta.data$muscle_site <- test$muscle_site
+harmony_combined@meta.data$sex <- test$sex
+```
+
+```{r}
+
+DimPlot(harmony_combined, reduction = "umap") + ggtitle("Low quality Cells filtered")
+
+```
+
+```{r}
+
+unique(harmony_combined@meta.data$orig.ident)
+
+```
+
+
+```{r}
+columns_to_check <- c("DF.classifications_0.25_0.09_290", "DF.classifications_0.25_0.09_261", "DF.classifications_0.25_0.09_232", "DF.classifications_0.25_0.09_270", "DF.classifications_0.25_0.09_255", "DF.classifications_0.25_0.09_275", "DF.classifications_0.25_0.09_271")
+
+harmony_combined@meta.data$is_doublet <- apply(harmony_combined@meta.data[, columns_to_check], 1, function(x) {
+  any(grepl("doublet", x, ignore.case = TRUE))
+})
+```
+
+
+```{r}
+
+# Set identity to orig.ident
+Idents(harmony_combined) <- "is_doublet"
+
+# Specify the group you want to highlight (the rest will be greyed out)
+group_to_highlight <- TRUE  # Replace with your specific orig.ident value
+
+# Use DimPlot with cells.highlight to grey out other groups
+umap_plot <- DimPlot(
+  harmony_combined,
+  pt.size = 3,
+  reduction = "umap", 
+  cells.highlight = WhichCells(harmony_combined, idents = group_to_highlight), 
+  cols.highlight = "blue",  # Highlight color
+  cols = "grey"  # Color for all other cells
+) + NoLegend() + ggtitle("Doublets")
+
+# Display the plot
+print(umap_plot)
+
+```
+
+```{r}
+
+#harmony_combined <- readRDS("harmony_combined.rds")
+
+FeaturePlot(harmony_combined, features = "CARMN", cols = c("lightgrey", "blue"), reduction = "umap") +
+  ggtitle("CARMN expression")
+
+```
+
+```{r}
+
+sum(rownames(harmony_combined) == "MYH1")
+```
+

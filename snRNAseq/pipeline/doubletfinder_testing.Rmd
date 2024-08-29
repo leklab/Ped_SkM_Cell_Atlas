@@ -1,0 +1,78 @@
+---
+title: "doubletfinder_testing"
+output: html_document
+date: "2024-08-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(DoubletFinder)
+library(Seurat)
+
+```
+
+```{r}
+
+seu.data = Seurat::Read10X(paste0(SOLO_DIR,'/soupx'), gene.column=1)
+
+```
+
+
+```{r}
+
+#seu <- CreateSeuratObject(seu.data)
+#seu <- NormalizeData(seu)
+#seu <- FindVariableFeatures(seu, selection.method = "vst", nfeatures = 2000)
+#seu <- ScaleData(seu)
+#seu <- RunPCA(seu)
+#seu <- RunUMAP(seu, dims = 1:10)
+#seu <- FindNeighbors(seu, dims = 1:10)
+#seu <- FindClusters(seu, resolution = 0.5)
+
+seu <- readRDS("CTRL87_seu.rds")
+
+```
+
+```{r}
+
+sweep.res.list <- paramSweep(seu, PCs = 1:10, sct = FALSE)
+sweep.stats <- summarizeSweep(sweep.res.list, GT = FALSE)
+bcmvn <- find.pK(sweep.stats)
+
+```
+
+```{r}
+
+homotypic.prop <- modelHomotypic(seu@meta.data$seurat_clusters)           ## ex: annotations <- seu_kidney@meta.data$ClusteringResults
+nExp_poi <- round(0.075*nrow(seu@meta.data))  ## Assuming 7.5% doublet formation rate - tailor for your dataset
+nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+
+```
+
+```{r}
+
+seu <- doubletFinder(seu, PCs = 1:10, pN = 0.25, pK = 0.09, nExp = nExp_poi, reuse.pANN = FALSE, sct = FALSE)
+#seu <- doubletFinder(seu, PCs = 1:10, pN = 0.25, pK = 0.09, nExp = nExp_poi.adj, reuse.pANN = "pANN_0.25_0.09_913", sct = FALSE)
+
+```
+
+```{r}
+
+seu@meta.data$DF.classifications_0.25_0.09_255
+
+DimPlot(seu, reduction = "umap", group.by = "DF.classifications_0.25_0.09_255")
+
+```
+
+```{r}
+
+seu_filtered <- subset(seu, subset = DF.classifications_0.25_0.09_255 == "Singlet")
+
+saveRDS(seu, "CTRL87_doublets.rds")
+
+```
+

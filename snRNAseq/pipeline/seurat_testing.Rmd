@@ -1,0 +1,162 @@
+---
+title: "seurat_testing"
+output: html_document
+date: "2024-08-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+# Load libraries  & helper functions ----
+suppressPackageStartupMessages(library(Matrix))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(Seurat))
+# library(future) #TODO add multicore for Seurat w/ `future` for `getClusterIDs()`
+
+suppressPackageStartupMessages(library(SoupX))
+
+# write_sparse requirements
+suppressPackageStartupMessages(library(utils))
+suppressPackageStartupMessages(library(R.utils))
+
+# source("~/DWM_utils/sc_utils/seurat_helpers/seutils.R")
+
+SOLO_DIR = "CTRL87/CTRL87-starSolo.out/GeneFull/" # Directory to either `Gene` or `GeneFull` matrix outputs
+#NCORES = args[2]
+
+# Helper function(s) ----
+## Quick function to find clusters
+getClusterIDs <- function(
+    toc, 
+    verbose=F
+){
+  seu <- CreateSeuratObject(toc)
+  seu <- seu %>%
+    NormalizeData(verbose=verbose)%>%
+    ScaleData(verbose=verbose) %>%
+    FindVariableFeatures(verbose=verbose)%>%
+    RunPCA(verbose=verbose) %>%
+    FindNeighbors(verbose=verbose) %>%
+    FindClusters(verbose=verbose)
+  
+  return(
+    setNames(Idents(seu), Cells(seu))
+  )
+}
+
+# Read in raw and filtered matrices ----
+message(paste0("Reading in SoupX matrices...\n"))
+seu.data = Seurat::Read10X(paste0(SOLO_DIR,'/soupx'), gene.column=1) #droplets
+
+seu = Seurat::CreateSeuratObject(counts = seu.data, project = "seu_ctrl87", min.cells = 3, min.features = 200)
+
+```
+
+
+```{r}
+#Standard QC? Based off of Seurat tutorial but not mentioned in Walter paper
+
+seu[["percent.mt"]] <- PercentageFeatureSet(seu, pattern = "^MT-")
+
+```
+
+```{r}
+
+VlnPlot(seu, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+```
+
+```{r}
+
+seu <- subset(seu, subset = nFeature_RNA > 200 & percent.mt < 5)
+
+```
+
+```{r}
+#From Walter paper - Filtering cells with less than 200 genes, fewer than 750 UMIs, and more than 25% of unique transcripts derived from mitochondrial genes
+
+```
+
+
+```{r}
+#Normalizing data
+
+seu <- NormalizeData(seu, normalization.method = "LogNormalize", scale.factor = 10000)
+
+
+```
+
+```{r}
+#Finding variable features
+
+seu <- FindVariableFeatures(seu, selection.method = "vst", nfeatures = 2000)
+
+
+```
+
+```{r}
+#Scale data
+
+all.genes <- rownames(seu)
+seu <- ScaleData(seu, features = all.genes)
+
+```
+
+```{r}
+#PCA
+
+seu <- RunPCA(seu, features = VariableFeatures(object = seu))
+
+```
+
+```{r}
+#Find neighbors + clusters
+
+seu <- FindNeighbors(seu, dims = 1:10)
+seu <- FindClusters(seu, resolution = 0.5)
+
+
+```
+
+```{r}
+
+#UMAP
+
+seu <- RunUMAP(seu, dims = 1:10)
+
+```
+
+```{r}
+#Plotting
+
+DimPlot(seu, reduction = "umap")
+
+```
+
+```{r}
+
+saveRDS(seu, file = "CTRL87_seu.rds")
+
+```
+
+```{r}
+
+Idents(seu) <- "seurat_clusters"
+
+
+# Find markers for all clusters
+all_markers <- FindAllMarkers(seu, only.pos = TRUE)
+
+# View the top markers for each cluster
+head(all_markers)
+```
+
+```{r}
+
+
+write.table(all_markers, file = "all_markers_CTRL87.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+```
+
