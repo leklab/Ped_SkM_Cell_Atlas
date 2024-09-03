@@ -1,7 +1,7 @@
 library(Seurat)
 library(harmony)
 
-
+#TODO - make this read from a text file
 seu_ctrl100 <- readRDS("CTRL100_doubletfiltered.rds")
 seu_ctrl38 <- readRDS("CTRL38_doubletfiltered.rds")
 seu_ctrl40 <- readRDS("CTRL40_doubletfiltered.rds")
